@@ -71,7 +71,7 @@ export default class CityAddModel extends InputModel {
    * @returns {Boolean} True if valid, false if otherwise.
    */
   isValid() {
-    return (this.country_code.trim() !== '') &&
-           (this.city_name.trim() !== '');
+    return ((this.country_code || '').trim() !== '') &&
+           ((this.city_name || '').trim() !== '');
   }
 }
