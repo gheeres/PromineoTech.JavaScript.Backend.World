@@ -78,8 +78,8 @@ export default class CountryUpdateModel extends InputModel {
    * @returns {Boolean} True if valid, false if otherwise.
    */
   isValid() {
-    return this.country_code ||
-           this.country_name || 
-           this.continent;
+    return (this.country_code?.trim() !== '') &&
+           (this.continent?.trim() !== '') &&
+           (this.country_name?.trim() !== '');
   }
 }

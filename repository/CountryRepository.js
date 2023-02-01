@@ -135,6 +135,9 @@ export default class CountryRepository extends SqliteRepository {
         UPDATE city SET country_code = NULL WHERE country_code = (SELECT country_code FROM country 
                                                                   WHERE country_code = $country_code 
                                                                      OR country_code2 = $country_code);
+        DELETE FROM country_language WHERE country_code = (SELECT country_code FROM country 
+                                                           WHERE country_code = $country_code 
+                                                              OR country_code2 = $country_code);
         DELETE FROM country 
         WHERE country_code = $country_code 
            OR country_code2 = $country_code;
@@ -235,7 +238,6 @@ export default class CountryRepository extends SqliteRepository {
         }
 
         if (properties.length) {
-console.log(properties);
           const sql = `UPDATE country SET ${ properties.join(',') }
                        WHERE (country_code = $existing_country_code OR country_code2 = $existing_country_code);`;
           try {

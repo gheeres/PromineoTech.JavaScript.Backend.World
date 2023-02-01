@@ -8,6 +8,7 @@ import swagger from './swagger.js';
 import HomeController from './controllers/HomeController.js';
 import CountryController from './controllers/CountryController.js';
 import CityController from './controllers/CityController.js';
+import LanguageController from './controllers/LanguageController.js';
 
 const port = 3000;
 const app = express();
@@ -22,6 +23,7 @@ app.use(morgan('combined'));
 app.use(HomeController);
 app.use(CountryController);
 app.use(CityController);
+app.use(LanguageController);
 
 // Swagger API / Routing
 app.use(swagger);

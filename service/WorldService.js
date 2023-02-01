@@ -1,6 +1,7 @@
 import SqliteRepository from "../repository/SqliteRepository.js";
 import CityRepository from "../repository/CityRepository.js";
 import CountryRepository from "../repository/CountryRepository.js";
+import LanguageRepository from "../repository/LanguageRepository.js";
 import Response from "../models/Response.js";
 import CityFilter from "../models/filter/CityFilter.js";
 import CountryFilter from "../models/filter/CountryFilter.js";
@@ -16,15 +17,18 @@ const TAG = `WorldService`;
 export default class WorldService {
   #countryRepository;
   #cityRepository;
+  #languageRepository;
 
   /**
    * Creates an instance of the WorldService class.
    * @param {CountryRepository} countryRepository The repository/data access layer for getting information about countries.
    * @param {CityRepository} cityRepository The repository/data access layer for getting information about cities.
+   * @param {LanguageRepository} languageRepository The repository/data access layer for getting information about languages.
    */
-  constructor(countryRepository, cityRepository) {
+  constructor(countryRepository, cityRepository, languageRepository) {
     this.#countryRepository = countryRepository || new CountryRepository();
     this.#cityRepository = cityRepository || new CityRepository();
+    this.#languageRepository = languageRepository || new LanguageRepository();
   }
 
   /**
@@ -213,4 +217,34 @@ export default class WorldService {
     }
     return new Response(404, `Specified city (${ id }) was not found. Country: ${ JSON.stringify(code) }`);
   }  
+
+  /**
+   * Retrieves all available languages.
+   * @param {LanguageFilter} filter The optional filter to apply.
+   * @returns {Array.LanguageModel} All of the available languages. If nothing found, then an empty array is returned.
+   */
+  async getLanguages(filter) {
+    //console.debug(`${ TAG }.getLanguages(${ JSON.stringify(filter) })`);
+
+    if (filter) {
+      if (filter.language_name) {
+        return await this.#languageRepository.find({ ...filter, language_name: `%${ filter.language_name }%` });
+      }
+      return await this.#languageRepository.find(filter);
+    }
+    return await this.#languageRepository.all();
+  }
+
+  /**
+   * Retrieves the language with the specified identity.
+   * @returns {CountryModel} The LanguageModel if found, otherwise null.
+   */
+  async getLanguage(code) {
+    //console.debug(`${ TAG }.getLanguage(${ JSON.stringify(code) })`);
+
+    if (code) {
+      return await this.#languageRepository.get(code);
+    }
+    return new Response(400, `Invalid language code specified. Specify a valid ISO639-3 identifier. Code: ${ JSON.stringify(code) }`);
+  }
 }

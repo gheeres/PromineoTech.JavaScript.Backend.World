@@ -72,8 +72,8 @@ export default class CityUpdateModel extends InputModel {
    * @returns {Boolean} True if valid, false if otherwise.
    */
   isValid() {
-    return this.city_name || 
-           this.country_code ||
+    return (this.country_code?.trim() !== '') ||
+           (this.city_name?.trim() !== '') ||
            this.latitude ||
            this.longitude ||
            this.city_population;
