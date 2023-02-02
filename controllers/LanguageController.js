@@ -54,6 +54,45 @@ app.get('/languages/find', async (req, res) => {
 
 /**
  * @swagger
+ * /languages/{code}/countries:
+ *   get:
+ *     summary: Retrieves the list of countries that speak the specified language and their percentage.
+ *     tags: [Language]
+ *     parameters:
+ *     - name: code
+ *       description: The ISO639-3 identifier.
+ *       in: path
+ *       required: true
+ *       schema:
+ *         type: string
+ *     responses:
+ *       200:
+ *         description: The list of counties speakikng the specified language.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CountryLanguageModel'
+ *       500:
+ *         description: Some server error
+ */
+app.get('/languages/:code/countries', async (req, res) => {
+  const code = req.params.code;
+  console.debug(`${ TAG }: GET /languages/${ code }/countries`);
+
+  if ((! code) ||
+      (code.length < 2) || (code.length > 3)) {
+    return res.status(400).send(`Empty or invalid ISO639-3 identifier specified.${ code ? ` Code: ${ code }` : '' }`);
+  }
+
+  const languages = await service.getCountriesForLanguage(code);
+  if (languages) {
+    return res.send(languages);
+  }
+  return res.status(404).send(`No language found with specified ISO639-3 identifier (${ code }).`);
+});
+
+/**
+ * @swagger
  * /languages/{code}:
  *   get:
  *     summary: Retrieves the language by it's unique ISO639-3 identifier code.
@@ -171,7 +210,7 @@ app.post('/languages', async (req, res) => {
     }
     return res.status(response.code).send(response);
   }
-  return res.status(403).send(new Response(402, `Specified language code (${ input.language_code }) already exists. Duplicate language.`, existing));
+  return res.status(403).send(new Response(403, `Specified language code (${ input.language_code }) already exists. Duplicate language.`, existing));
 });
 
 /**

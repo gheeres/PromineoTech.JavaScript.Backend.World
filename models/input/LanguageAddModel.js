@@ -22,8 +22,8 @@
  *           type: string
  *           description: Optional notes or additional information regarding the language
  *       example:
- *         language_code: eng
- *         language_code2: en
+ *         language_code: ENG
+ *         language_code2: EN
  *         language_name: English
  *         language_notes: 
  */

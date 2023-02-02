@@ -3,7 +3,11 @@ import Response from '../models/Response.js';
 import LanguageFilter from '../models/filter/LanguageFilter.js';
 import LanguageModel from '../models/LanguageModel.js';
 import LanguageBaseModel from '../models/LanguageBaseModel.js';
+import CountryBaseModel from '../models/CountryBaseModel.js';
 import CountryLanguageModel from '../models/CountryLanguageModel.js';
+import CountryLanguageDetailModel from '../models/CountryLanguageDetailModel.js';
+import LanguageCountryDetailModel from '../models/LanguageCountryDetailModel.js';
+import LanguageDetailInputModel from '../models/input/LanguageDetailInputModel.js';
 
 const TAG = `LanguageRepository`;
 
@@ -38,6 +42,33 @@ export default class LanguageRepository extends SqliteRepository {
     `;
   }
 
+    /**
+   * Get's the default SQL query string to use for getting country / language relationship information.
+   * @param {String} where The optional where clause to merge into the query.
+   * @param {String} where The optional ordering / sorting of the results.
+   * @returns {String} The SQL query string.
+   */
+  #getCountryLanguageSQLQueryString(where, order) {
+    //console.debug(`${ TAG }.#getCountryLanguageSQLQueryString(${ where })`);
+
+    return `
+      SELECT
+        country_language.country_language_id,
+        country_language.country_code,
+        country.country_name,
+        country_language.language_code,
+        language.language_name,
+        country_language.is_official,
+        country_language.language_percentage
+      FROM
+        country_language
+        INNER JOIN country ON country_language.country_code = country.country_code
+        INNER JOIN language ON country_language.language_code = language.language_code
+      ${ (where) ? ` WHERE ${ where }` : '' }
+      ${ (order) ? ` ORDER BY ${ order }` : '' }
+    `;
+  }
+
   /**
    * Converts a database row into an instance of LanguageModel.
    * @param {Object} row The current database row to serialize
@@ -64,10 +95,45 @@ export default class LanguageRepository extends SqliteRepository {
     //console.debug(`${ TAG }.#toCountryLanguageModel(${ JSON.stringify(row) }, ${ JSON.stringify(prev) },${ JSON.stringify(index) })`);
 
     const countryLanguage = new CountryLanguageModel();
-    const { country_code, country_name, language_code, language_name, ...data } = row;
-    Object.assign(countryLanguage, { ...data, country: new CountryBaseModel(country_code, country_name),
-                                              language: new LanguageBaseModel(language_code, language_name) });
+    const { country_code, country_name, language_code, language_name, is_official, ...data } = row;
+    Object.assign(countryLanguage, { ...data, is_official: (is_official === 'T'),
+                                     country: new CountryBaseModel(country_code, country_name),
+                                     language: new LanguageBaseModel(language_code, language_name) });
     return countryLanguage;
+  }
+
+  /**
+   * Converts a database row into an instance of CountryLanguageDetailModel.
+   * @param {Object} row The current database row to serialize
+   * @param {LanguageModel} prev The previously serialized instance.
+   * @param {Number} index The current row number
+   * @returns The LanguageModel instance.
+   */
+  #toCountryLanguageDetailModel(row,prev,index) {
+    //console.debug(`${ TAG }.#toCountryLanguageDetailModel(${ JSON.stringify(row) }, ${ JSON.stringify(prev) },${ JSON.stringify(index) })`);
+
+    const detail = new CountryLanguageDetailModel();
+    const { country_code, country_name, language_code, language_name, is_official, ...data } = row;
+    Object.assign(detail, { ...data, is_official: (is_official === 'T'),
+                            language: new LanguageBaseModel(language_code, language_name) });
+    return detail;
+  }
+
+  /**
+   * Converts a database row into an instance of LanguageCountryDetailModel.
+   * @param {Object} row The current database row to serialize
+   * @param {LanguageModel} prev The previously serialized instance.
+   * @param {Number} index The current row number
+   * @returns The LanguageModel instance.
+   */
+  #toLanguageCountryDetailModel(row,prev,index) {
+    //console.debug(`${ TAG }.#toLanguageCountryDetailModel(${ JSON.stringify(row) }, ${ JSON.stringify(prev) },${ JSON.stringify(index) })`);
+
+    const detail = new LanguageCountryDetailModel();
+    const { country_code, country_name, language_code, language_name, is_official, ...data } = row;
+    Object.assign(detail, { ...data, is_official: (is_official === 'T'),
+                            country: new CountryBaseModel(country_code, country_name) });
+    return detail;
   }
 
   /**
@@ -128,30 +194,56 @@ export default class LanguageRepository extends SqliteRepository {
 
   /**
    * Retrieves the list of countries that speak the specified language.
-   * @param {String} code The unique id of the country.
-   * @returns {CountryLanguageModel} The languages for the country. If nothing found, then an empty array is returned.
+   * @param {String} code The unique id of the language.
+   * @returns {LanguageCountryDetailModel} The countries that speak the specified language. If nothing found, then an empty array is returned.
    */
-  async getCountries(code) {
-    //console.debug(`${ TAG }.getCountries(${ JSON.stringify(code) })`);
+  async getCountriesForLanguage(code) {
+    //console.debug(`${ TAG }.getCountriesForLanguage(${ JSON.stringify(code) })`);
 
     if (code) {
-      const sql = `
-        SELECT
-          country_language.country_language_id,
-          country_language.country_code,
-          country.country_name,
-          country_language.language_code,
-          language.language_name,
-          country_language.is_official,
-          country_language.language_percentage
-        FROM
-          country_language
-          INNER JOIN country ON country_language.country_code = country.country_code
-          INNER JOIN language ON country_language.language_code = language.language_code
-        WHERE
-          (country_language.language_code = $language_code OR language.language_code2 = $language_code)
-      `;
-      const results = await this.query(sql, { $language_code: code }, this.#toCountryLanguageModel);
+      const filter = `(country_language.language_code = $language_code OR language.language_code2 = $language_code)`;
+      const sql = this.#getCountryLanguageSQLQueryString(filter, "country.country_name");
+
+      const results = await this.query(sql, { $language_code: code }, this.#toLanguageCountryDetailModel);
+      return results || [];
+    }
+    return [];
+  }
+
+  /**
+   * Retrieves the list of language for a specified country.
+   * @param {String} code The unique id of the country.
+   * @returns {CountryLanguageDetailModel} The languages for the country. If nothing found, then an empty array is returned.
+   */
+  async getLanguagesForCountry(code) {
+    //console.debug(`${ TAG }.getLanguagesForCountry(${ JSON.stringify(code) })`);
+
+    if (code) {
+      const filter = `(country_language.country_code = $country_code OR country.country_code2 = $country_code)`;
+      const sql = this.#getCountryLanguageSQLQueryString(filter, "language.language_name");
+
+      const results = await this.query(sql, { $country_code: code }, this.#toCountryLanguageDetailModel);
+      return results || [];
+    }
+    return [];
+  }
+
+  /**
+   * Retrieves the language association for a country by the country and language code.
+   * @param {String} country The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported.
+   * @param {String} language The ISO639-3 identifier of the language.
+   * @returns {CountryLanguageModel} The languages for the country. If nothing found, then an empty array is returned.
+   */
+  async getLanguageForCountry(country, language) {
+    //console.debug(`${ TAG }.getLanguageForCountry(${ JSON.stringify(country) },${ JSON.stringify(language) })`);
+
+    if ((country) && (language)) {
+      const filter = `    (country_language.country_code = $country_code OR country.country_code2 = $country_code)
+                      AND (country_language.language_code = $language_code OR language.language_code2 = $language_code)`;
+      const sql = this.#getCountryLanguageSQLQueryString(filter);
+
+      const results = await this.query(sql, { $country_code: country, $language_code: language }, 
+                                       this.#toCountryLanguageModel);
       return results ? results[0] : null;
     }
     return null;
@@ -281,4 +373,137 @@ export default class LanguageRepository extends SqliteRepository {
     }
     return new Response(404, `The requested language (${ code }) was not found.`);
   }    
+
+  /**
+   * Adds language details for a country.
+   * @param {String} country The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported.
+   * @param {CountryLanguageDetailAddModel} input The information to update or modify for the language.
+   * @returns {Response} The status of the response containing the added language if successful.
+   */
+  async addDetail(country, input) {
+    //console.debug(`${ TAG }.addDetail(${ JSON.stringify(country) },${ JSON.stringify(input) })`);
+
+    if (! country) {
+      return new Response(400, `Invalid country code specified. Specify a valid ISO3155-1 identifier. Code: ${ JSON.stringify(country) }`);
+    }
+    if ((! input) || (!input.isValid())) {
+      return new Response(400, `Failed to add language details due to an invalid request. Data missing or incomplete.`, { input: input });
+    }
+
+    const sql = `
+      INSERT INTO country_language (country_code,language_code,is_official,language_percentage)
+      VALUES ((SELECT country_code FROM country WHERE country_code = $country_code OR country_code2 = $country_code),
+              (SELECT language_code FROM language WHERE language_code = $language_code OR language_code2 = $language_code),
+              $is_official,
+              $language_percentage);
+    `;
+    const params = {
+      $country_code: country,
+      $language_code: input.language_code,
+      $is_official: input.is_official ? 'T' : 'F',
+      $language_percentage: input.language_percentage || 0,
+    };
+    try {
+      const result = await this.execute(sql, params);
+      if (result) {
+        const detail = await this.getLanguageForCountry(country, input.language_code);
+        if (detail) {
+          return new Response(200, `Language detail added for (${ detail.country?.country_code }) ${ detail.country?.country_name }. (${ detail.language?.language_code }) ${ detail.language?.language_name }`, detail);
+        }
+        return new Response(404, `Language detail orphaned. Request for language (${ input.language_code }) details for ${ country } failed. Check database integrity.`, { country : country, input : input });
+      }
+      return new Response(500, `Failed to add language (${ input.language_code }) details for ${ country } due to an non-success status code.`);
+    } catch(e) {
+      return new Response(500, `Failed to add language (${ input.language_code }) details for ${ country } due to an unhandled error.`, { error: e });
+    }
+  }
+
+  /**
+   * Adds language details for a country.
+   * @param {String} country The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported.
+   * @param {String} language The ISO639-3 identifier.
+   * @param {LanguageDetailInputModel} input The information to update or modify for the language.
+   * @returns {Response} The status of the response containing the added language if successful.
+   */
+  async updateDetail(country, language, input) {
+    //console.debug(`${ TAG }.addDetail(${ JSON.stringify(country) },${ JSON.stringify(language) },${ JSON.stringify(input) })`);
+
+    if (! country) {
+      return new Response(400, `Invalid country code specified. Specify a valid ISO3155-1 identifier. Code: ${ JSON.stringify(country) }`);
+    }
+    if (! language) {
+      return new Response(400, `Invalid language code specified. Specify a valid ISO639-3 identifier. Code: ${ JSON.stringify(language) }`);
+    }
+    if ((! input) || (!input.isValid())) {
+      return new Response(400, `Failed to modify language details due to an invalid request. Data missing or incomplete.`, { input: input });
+    }
+
+    const sql = `
+      UPDATE country_language
+      SET is_official = $is_official,
+          language_percentage = $language_percentage
+      WHERE country_code IN (SELECT country_code FROM country WHERE country_code = $country_code OR country_code2 = $country_code)
+        AND language_code IN (SELECT language_code FROM language WHERE language_code = $language_code OR language_code2 = $language_code);
+    `;
+    const params = {
+      $country_code: country,
+      $language_code: language,
+      $is_official: input.is_official ? 'T' : 'F',
+      $language_percentage: input.language_percentage || 0
+    };
+    try {
+      const result = await this.execute(sql, params);
+      if (result) {
+        const detail = await this.getLanguageForCountry(country, language);
+        if (detail) {
+          return new Response(200, `Language detail modified for (${ detail.country?.country_code }) ${ detail.country?.country_name }. (${ detail.language?.language_code }) ${ detail.language?.language_name }`, detail);
+        }
+        return new Response(404, `Language detail orphaned. Request for language (${ language }) details for ${ country } failed. Check database integrity.`, { country : country, language: language, input : input });
+      }
+      return new Response(500, `Failed to modify language (${ language }) details for ${ country } due to an non-success status code.`);
+    } catch(e) {
+      return new Response(500, `Failed to modify language (${ language }) details for ${ country } due to an unhandled error.`, { error: e });
+    }
+  }
+
+  /**
+   * Deletes or removes language details for a country.
+   * @param {String} country The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported.
+   * @param {String} language The ISO639-3 identifier.
+   * @returns {Response} The status of the response containing the added language if successful.
+   */
+  async deleteDetail(country, language) {
+    //console.debug(`${ TAG }.deleteDetail(${ JSON.stringify(country) },${ JSON.stringify(language) })`);
+
+    if (! country) {
+      return new Response(400, `Invalid country code specified. Specify a valid ISO3155-1 identifier. Code: ${ JSON.stringify(country) }`);
+    }
+    if (! language) {
+      return new Response(400, `Invalid language code specified. Specify a valid ISO639-3 identifier. Code: ${ JSON.stringify(language) }`);
+    }
+
+    const existing = await this.getLanguageForCountry(country, language);
+    if (! existing) {
+      return new Response(404, `Language (${ language }) details not found for ${ country }.`);
+    }
+
+    const sql = `
+      DELETE FROM country_language
+      WHERE country_code IN (SELECT country_code FROM country WHERE country_code = $country_code OR country_code2 = $country_code)
+        AND language_code IN (SELECT language_code FROM language WHERE language_code = $language_code OR language_code2 = $language_code);
+    `;
+    const params = {
+      $country_code: country,
+      $language_code: language
+    };
+    try {
+      const result = await this.execute(sql, params);
+      if (result) {
+        return new Response(200, `Language detail removed for (${ existing.country?.country_code }) ${ existing.country?.country_name }. (${ existing.language?.language_code }) ${ existing.language?.language_name }`, existing);
+      }
+      return new Response(500, `Failed to remove language (${ language }) details for ${ country } due to an non-success status code.`);
+    } catch(e) {
+      return new Response(500, `Failed to remove language (${ language }) details for ${ country } due to an unhandled error.`, { error: e });
+    }
+  }
 }

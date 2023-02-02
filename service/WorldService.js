@@ -237,7 +237,8 @@ export default class WorldService {
 
   /**
    * Retrieves the language with the specified identity.
-   * @returns {CountryModel} The LanguageModel if found, otherwise null.
+   * @param {String} code The ISO639-3 identifier of the language.
+   * @returns {LanguageModel} The LanguageModel if found, otherwise null.
    */
   async getLanguage(code) {
     //console.debug(`${ TAG }.getLanguage(${ JSON.stringify(code) })`);
@@ -247,4 +248,161 @@ export default class WorldService {
     }
     return new Response(400, `Invalid language code specified. Specify a valid ISO639-3 identifier. Code: ${ JSON.stringify(code) }`);
   }
+
+  /**
+   * Adds or creates a new language.
+   * @param {LanguageAddModel} input The information to update or modify for the language.
+   * @returns {Response} The reponse containing the added or created language if successful.
+   */
+  async addLanguage(input) {
+    //console.debug(`${ TAG }.addLanguage(${ JSON.stringify(input) })`);
+
+    if ((input) && (input.isValid())) {
+      const response = await this.#languageRepository.add(input);
+      return response;
+    }
+    return new Response(400, `Failed to add language due to an invalid request. Data missing or incomplete.`, { input: input });
+  }  
+
+  /**
+   * Updates or modifies the information about the specified language.
+   * @param {String} code The ISO639-3 identifier of the language.
+   * @param {LanguageUpdateModel} id The information to update or modify for the language.
+   * @returns {Response} The reponse containing the updated language if successful.
+   */
+  async updateLanguage(code, input) {
+    //console.debug(`${ TAG }.updateLanguage(${ code }, ${ JSON.stringify(input) })`);
+
+    if ((code) && 
+        (input) && (input.isValid())) {
+      const response = await this.#languageRepository.update(code, input);
+      return response;
+    }
+    return new Response(400, `Failed to modify language (${ code }) due to an invalid request. Data missing or incomplete.`, { input: input });
+  }
+
+  /**
+   * Deletes the specified language with the specified unique code.
+   * @param {String} code The ISO639-3 identifier of the language.
+   * @returns {Response} The reponse containing the removed language if successful.
+   */
+  async deleteLanguage(code) {
+    //console.debug(`${ TAG }.deleteLanguage(${ JSON.stringify(code) })`);
+
+    if ((code) || (code.length < 2) || (code.length > 3)) {
+      const response = await this.#languageRepository.delete(code);
+      return response;
+    }
+    return new Response(400, `Language code was missing or invalid. Code: ${ JSON.stringify(code) }`);
+  }
+
+  /**
+   * Retrieves all of the countries that speak the specified language.
+   * @param {String} code The ISO639-3 identifier of the language.
+   * @returns {Array.CountryLanguageModel} The collection of countries that speak the specified language. If nothing found, then an empty array is returned.
+   */
+  async getCountriesForLanguage(code) {
+    //console.debug(`${ TAG }.getCountriesForLanguage(${ JSON.stringify(code) })`);
+
+    if (code) {
+      return await this.#languageRepository.getCountriesForLanguage(code);
+    }
+    return new Response(400, `Invalid language code specified. Specify a valid ISO639-3 identifier. Code: ${ JSON.stringify(code) }`);
+  }  
+
+  /**
+   * Retrieves all of the languages that are speoken in the specified country.
+   * @param {String} code The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported.
+   * @returns {Array.CountryLanguageModel} The collection of languages spoken in the country. If nothing found, then an empty array is returned.
+   */
+  async getLanguagesForCountry(code) {
+    //console.debug(`${ TAG }.getLanguagesForCountry(${ JSON.stringify(code) })`);
+
+    if (code) {
+      return await this.#languageRepository.getLanguagesForCountry(code);
+    }
+    return new Response(400, `Invalid country code specified. Specify a valid ISO3155-1 identifier. Code: ${ JSON.stringify(code) }`);
+  }   
+
+  /**
+   * Retrieves the language association for a country by the country and language code.
+   * @param {String} country The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported.
+   * @param {String} language The ISO639-3 identifier of the language.
+   * @returns {Array.CountryLanguageModel} The collection of languages spoken in the country. If nothing found, then an empty array is returned.
+   */
+  async getLanguageForCountry(country, language) {
+    //console.debug(`${ TAG }.getLanguageForCountry(${ JSON.stringify(country) }, ${ JSON.stringify(language) })`);
+
+    if (! country) {
+      return new Response(400, `Invalid country code specified. Specify a valid ISO3155-1 identifier. Code: ${ JSON.stringify(country) }`);
+    }
+    if (! language) {
+      return new Response(400, `Invalid language code specified. Specify a valid ISO639-3 identifier. Code: ${ JSON.stringify(language) }`);
+    }
+
+    return await this.#languageRepository.getLanguageForCountry(country, language);
+  }    
+
+  /**
+   * Adds or updates language details for a country.
+   * @param {String} country The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported.
+   * @param {String} language The ISO639-3 identifier of the language.
+   * @param {CountryLanguageDetailAddModel} input The information to update or modify for the language.
+   * @returns {Response} The reponse containing the added or created language if successful.
+   */
+  async addOrUpdateLanguageDetail(country, language, input) {
+    //console.debug(`${ TAG }.addOrUpdateLanguageDetail(${ JSON.stringify(country) },${ JSON.stringify(language) },${ JSON.stringify(input) })`);
+
+    if (! country) {
+      return new Response(400, `Invalid country code specified. Specify a valid ISO3155-1 identifier. Code: ${ JSON.stringify(country) }`);
+    }
+    if (! language) {
+      return new Response(400, `Invalid language code specified. Specify a valid ISO639-3 identifier. Code: ${ JSON.stringify(language) }`);
+    }
+    if ((! input) || (!input.isValid())) {
+      return new Response(400, `Failed to add language due to an invalid request. Data missing or incomplete.`, { input: input });
+    }
+
+    const existing = await this.getLanguageForCountry(country, language);
+    if (existing) {
+      return await this.#languageRepository.updateDetail(country, language, input)
+    }
+
+
+    // Make sure country and language exist...
+    const countryModel = await this.getCountry(country);
+    if (! countryModel) {
+      return new Response(400, `Invalid country code specified. Specify a valid ISO3155-1 identifier. Code: ${ JSON.stringify(country) }`);
+    }
+    const languageModel = await this.getLanguage(input.language_code);
+    if (! languageModel) {
+      return new Response(400, `Invalid language code specified. Specify a valid ISO639-3 identifier. Code: ${ JSON.stringify(language) }`);
+    }
+
+    const response = await this.#languageRepository.addDetail(country, input);
+    return response;
+  } 
+
+  /**
+   * Deletes or removes language details for a country.
+   * @param {String} country The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported.
+   * @param {String} language The ISO639-3 identifier of the language.
+   * @returns {Response} The reponse containing the remove language details if successful.
+   */
+  async deleteLanguageDetail(country, language) {
+    //console.debug(`${ TAG }.deleteLanguageDetail(${ JSON.stringify(country) },${ JSON.stringify(language) })`);
+
+    if (! country) {
+      return new Response(400, `Invalid country code specified. Specify a valid ISO3155-1 identifier. Code: ${ JSON.stringify(country) }`);
+    }
+    if (! language) {
+      return new Response(400, `Invalid language code specified. Specify a valid ISO639-3 identifier. Code: ${ JSON.stringify(language) }`);
+    }
+
+    const existing = await this.getLanguageForCountry(country, language);
+    if (existing) {
+      return await this.#languageRepository.deleteDetail(country, language)
+    }
+    return new Response(404, `Specified language (${ language }) details not found for (${ country })`);
+  } 
 }

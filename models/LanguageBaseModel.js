@@ -16,7 +16,7 @@
  *           type: string
  *           description: The official name of the language
  *       example:
- *         language_code: eng
+ *         language_code: ENG
  *         language_name: English
  */
 import Model from './Model.js';

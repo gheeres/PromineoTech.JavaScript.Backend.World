@@ -10,6 +10,8 @@ import CountryModel from "../models/CountryModel.js";
 import CountryBaseModel from "../models/CountryBaseModel.js";
 import CountryAddModel from "../models/input/CountryAddModel.js";
 import CountryUpdateModel from "../models/input/CountryUpdateModel.js";
+import CountryLanguageDetailAddModel from "../models/input/CountryLanguageDetailAddModel.js";
+import LanguageDetailInputModel from "../models/input/LanguageDetailInputModel.js";
 import CountryFilter from "../models/filter/CountryFilter.js";
 import { Router } from 'express';
 
@@ -63,6 +65,218 @@ app.get('/countries/find', async (req, res) => {
     return res.send(countries);
   }
   return res.status(404).send(`No countries found for specified filter: ${ JSON.stringify(filter) }).`);
+});
+
+/**
+ * @swagger
+ * /countries/{code}/languages:
+ *   get:
+ *     summary: Retrieves the languages spoken for the specified country.
+ *     tags: [Country,Language]
+ *     parameters:
+ *     - name: code
+ *       description: The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported
+ *       in: path
+ *       required: true
+ *       schema:
+ *         type: string
+ *     responses:
+ *       200:
+ *         description: The languages if found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CountryLanguageModel'
+ *       500:
+ *         description: Some server error
+ */
+app.get('/countries/:code/languages', async (req, res) => {
+  const code = req.params.code;
+  console.debug(`${ TAG }: GET /countries/${ code }`);
+
+  if ((! code) ||
+      (code.length < 2) || (code.length > 3)) {
+    return res.status(400).send(`Empty or invalid ISO3155-1 identifier specified.${ code ? ` Code: ${ code }` : '' }`);
+  }
+
+  const languages = await service.getLanguagesForCountry(code);
+  if (languages) {
+    return res.send(languages);
+  }
+  return res.status(404).send(`No languages found with specified ISO3155-1 identifier (${ code }).`);
+});
+
+/**
+ * @swagger
+ * /countries/{code}/languages:
+ *   post:
+ *     summary: Adds the spoken language to the specified country.
+ *     tags: [Country,Language]
+ *     parameters:
+ *     - name: code
+ *       description: The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported
+ *       in: path
+ *       required: true
+ *       schema:
+ *         type: string
+ *     requestBody:
+ *       description: The language details for the country.
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CountryLanguageDetailAddModel'
+ *     responses:
+ *       200:
+ *         description: The created language detail if found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CountryLanguageDetailModel'
+ *       500:
+ *         description: Some server error
+ */
+app.post('/countries/:code/languages', async (req, res) => {
+  const country = req.params.code;
+  console.debug(`${ TAG }: POST /countries/${ country }/languages`);
+
+  if ((! country) ||
+      (country.length < 2) || (country.length > 3)) {
+    return res.status(400).send(`Empty or invalid ISO3155-1 identifier specified.${ country ? ` Code: ${ country }` : '' }`);
+  }
+  const input = CountryLanguageDetailAddModel.fromHTTPRequest(req);
+  if (! input.isValid()) {
+    return res.status(400).send(`Incomplete or missing data received. Cannot add specified language to country. ${ country ? ` Code: ${ country }` : '' }`);
+  }
+
+  let existing = await service.getLanguageForCountry(country, input.language_code);
+  if (! existing) {
+    const response = await service.addOrUpdateLanguageDetail(country, input.language_code, input);
+    if (response.isSuccessStatusCode()) {
+      return res.send(response);
+    }
+    return res.status(response.code).send(response);
+  }
+  return res.status(403).send(new Response(403, `Specified language details (${ input.language_code }) for ${ country } already exists. Duplicate details.`, existing));
+});
+
+/**
+ * @swagger
+ * /countries/{code}/languages/{language}:
+ *   put:
+ *     summary: Updates the spoken language details for the specified country.
+ *     tags: [Country,Language]
+ *     parameters:
+ *     - name: code
+ *       description: The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported
+ *       in: path
+ *       required: true
+ *       schema:
+ *         type: string
+ *     - name: language
+ *       description: The ISO639-3 identifier.
+ *       in: path
+ *       required: true
+ *       schema:
+ *         type: string
+ *     requestBody:
+ *       description: The language details for the country.
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LanguageDetailInputModel'
+ *     responses:
+ *       200:
+ *         description: The created language detail if found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CountryLanguageDetailModel'
+ *       500:
+ *         description: Some server error
+ */
+app.put('/countries/:code/languages/:language', async (req, res) => {
+  const country = req.params.code;
+  const language = req.params.language;
+  console.debug(`${ TAG }: PUT /countries/${ country }/languages/${ language }`);
+
+  if ((! country) ||
+      (country.length < 2) || (country.length > 3)) {
+    return res.status(400).send(`Empty or invalid ISO3155-1 identifier specified.${ country ? ` Country: ${ country }` : '' }`);
+  }
+  if ((! language) ||
+      (language.length < 2) || (language.length > 3)) {
+    return res.status(400).send(`Empty or invalid ISO639-3 identifier specified.${ language ? ` Language: ${ language }` : '' }`);
+  }
+  const input = LanguageDetailInputModel.fromHTTPRequest(req);
+  if (! input.isValid()) {
+    return res.status(400).send(`Incomplete or missing data received. Cannot update specified language for country.${ country ? ` Country: ${ country }` : '' }${ language ? ` Language: ${ language }` : '' }`);
+  }
+
+  let existing = await service.getLanguageForCountry(country, language);
+  if (existing) {
+    const response = await service.addOrUpdateLanguageDetail(country, language, input);
+    if (response.isSuccessStatusCode()) {
+      return res.send(response);
+    }
+    return res.status(response.code).send(response);
+  }
+  return res.status(404).send(new Response(404, `Specified language details (${ language }) for ${ country } not found.`, existing));
+});
+
+/**
+ * @swagger
+ * /countries/{code}/languages/{language}:
+ *   delete:
+ *     summary: Removes the spoken language details for the specified country.
+ *     tags: [Country,Language]
+ *     parameters:
+ *     - name: code
+ *       description: The ISO3155-1 identifier. Both alpha-2 and alpha-3 are supported
+ *       in: path
+ *       required: true
+ *       schema:
+ *         type: string
+ *     - name: language
+ *       description: The ISO639-3 identifier.
+ *       in: path
+ *       required: true
+ *       schema:
+ *         type: string
+ *     responses:
+ *       200:
+ *         description: The removed language details if found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CountryLanguageDetailModel'
+ *       500:
+ *         description: Some server error
+ */
+app.delete('/countries/:code/languages/:language', async (req, res) => {
+  const country = req.params.code;
+  const language = req.params.language;
+  console.debug(`${ TAG }: PUT /countries/${ country }/languages/${ language }`);
+
+  if ((! country) ||
+      (country.length < 2) || (country.length > 3)) {
+    return res.status(400).send(`Empty or invalid ISO3155-1 identifier specified.${ country ? ` Country: ${ country }` : '' }`);
+  }
+  if ((! language) ||
+      (language.length < 2) || (language.length > 3)) {
+    return res.status(400).send(`Empty or invalid ISO639-3 identifier specified.${ language ? ` Language: ${ language }` : '' }`);
+  }
+
+  let existing = await service.getLanguageForCountry(country, language);
+  if (existing) {
+    const response = await service.deleteLanguageDetail(country, language);
+    if (response.isSuccessStatusCode()) {
+      return res.send(response);
+    }
+    return res.status(response.code).send(response);
+  }
+  return res.status(404).send(new Response(404, `Specified language details (${ language }) for ${ country } not found.`, existing));
 });
 
 /**
@@ -184,7 +398,7 @@ app.post('/countries', async (req, res) => {
     }
     return res.status(response.code).send(response);
   }
-  return res.status(403).send(new Response(402, `Specified country code (${ input.country_code }) already exists. Duplicate country.`, existing));
+  return res.status(403).send(new Response(403, `Specified country code (${ input.country_code }) already exists. Duplicate country.`, existing));
 });
 
 /**
